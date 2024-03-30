@@ -1,0 +1,1853 @@
+<!DOCTYPE HTML>
+<HTML lang="en" style="background-color: black;">
+	<Head>
+	<Title>Cosmolost</TITLE>
+		
+		<!-- 
+		GLSL is the language used for shaders (GL Shader Language)
+		Attribute - you specify how to pull the data out of the buffers you supply.
+		Buffers - Data loaded onto the GPU (Normally vertex information)
+		Uniforms - global variables (in GL SL) that you set before you run the shader program
+		Textures - Textures are arrays of data you can randomly acces in your shader program.  
+		Varying - are way for a vertex shader to pass data to the fragmentShader.
+		-->
+		
+<script id="stdVert" type="notjs">
+	attribute vec4 a_position;
+	attribute vec3 a_normal;
+	attribute vec3 a_color;
+	attribute vec2 a_uv;
+	varying vec3 v_color;
+	varying vec3 v_normal;
+	varying vec3 v_pos;
+
+	varying vec2 uv;
+
+	uniform vec2 u_RES;
+	varying vec2 screenCoord;
+
+	uniform vec3 u_translation;
+	uniform vec3 u_rotation;
+	uniform vec3 u_scale;
+
+	uniform vec3 cameraRotation;
+	uniform vec3 cameraPosition;
+
+	uniform float n;
+	uniform float f;
+	//uniform float r;
+	//uniform float t;
+	uniform float fov;
+	uniform float aspect;
+
+	const float chunk= 12.623219;
+
+	vec4 PositionObject(vec4 pos)
+	{
+		mat4 translateM = mat4(1.0,0.0,0.0,0.0,
+								0.0,1.0,0.0,0.0,
+								0.0,0.0,1.0,0.0,
+								u_translation.x, u_translation.y, u_translation.z, 1.0);
+		return translateM*pos;
+	}
+
+	vec4 ScaleObject(vec4 pos)
+	{
+		if(length(u_scale) == 0.0)
+			return pos;
+
+		mat4 scaleM = mat4(u_scale.x,0.0,0.0,0.0,
+							0.0, u_scale.y, 0.0, 0.0,
+							0.0,0.0,u_scale.z,0.0,
+							0.0,0.0,0.0,1.0);
+
+		return scaleM*pos;
+	}
+
+	vec4 RotateObject(vec4 pos)
+	{
+		vec3 c = cos(u_rotation);
+		vec3 s = sin(u_rotation);
+
+		mat4 Rx = mat4(1.0, 0.0, 0.0, 0.0,
+					   0.0, c.x, s.x, 0.0,
+					   0.0, -s.x, c.x, 0.0,
+					   0.0, 0.0, 0.0, 1.0);
+
+		mat4 Ry = mat4(c.y, 0.0, -s.y, 0.0,
+						0.0, 1.0, 0.0, 0.0,
+						s.y, 0.0, c.y, 0.0,
+						0.0, 0.0, 0.0, 1.0);
+		
+
+		mat4 Rz = mat4(c.z, s.z, 0.0, 0.0,
+						-s.z, c.z, 0.0, 0.0,
+						0.0, 0.0, 1.0,0.0,
+						0.0, 0.0, 0.0, 1.0);
+		return Rx * Ry * Rz * pos;
+	}
+
+	// Symetric projection
+	vec4 Project(vec4 pos)
+	{
+		float nr = 1.0 / tan(radians(fov) * 0.5);
+		float nt = nr / aspect;
+		
+		mat4 projectM = mat4(nr, 0.0, 0.0, 0.0,
+							 0.0,nt, 0.0, 0.0,
+							 0.0, 0.0, -(f+n)/(f-n), -1.0,
+							 0.0, 0.0, -2.0*(f*n)/(f-n), 0.0);
+
+		return projectM * pos;
+	}
+
+	vec4 MoveCamera(vec4 pos)
+	{
+		vec3 c = cos(cameraRotation);
+		vec3 s = sin(cameraRotation);
+
+		
+		mat4 Rx = mat4(1.0, 0.0, 0.0, 0.0,
+					   0.0, c.x, s.x, 0.0,
+					   0.0, -s.x, c.x, 0.0,
+					   0.0, 0.0, 0.0, 1.0);
+
+		mat4 Ry = mat4(c.y, 0.0, -s.y, 0.0,
+						0.0, 1.0, 0.0, 0.0,
+						s.y, 0.0, c.y, 0.0,
+						0.0, 0.0, 0.0, 1.0);
+		
+
+		mat4 Rz = mat4(c.z, s.z, 0.0, 0.0,
+						-s.z, c.z, 0.0, 0.0,
+						0.0, 0.0, 1.0,0.0,
+						0.0, 0.0, 0.0, 1.0);
+
+		mat4 translateM = mat4(1.0,0.0,0.0,0.0,
+		0.0,1.0,0.0,0.0,
+		0.0,0.0,-1.0,0.0,
+		-cameraPosition.x, -cameraPosition.y, cameraPosition.z, 1.0);
+
+		return Rx*Ry*Rz*translateM*pos;
+	}
+
+	vec4 ChunkPos(vec4 pos)
+	{
+		return  floor(pos*chunk)/chunk;
+	}
+
+	#define PI 3.1415926538
+
+	vec2 SphereUvs(vec2 inPos)
+	{
+		return asin(inPos)/PI + 0.5;
+	}
+
+	void main()
+	{
+		v_color = a_color;
+
+		uv = a_uv;
+
+		vec4 pos = Project(ChunkPos(MoveCamera(PositionObject(RotateObject(ScaleObject(a_position))))));
+		gl_Position = pos;
+		screenCoord = (pos.xy/pos.w+1.0)*0.5;
+
+		v_normal = normalize(RotateObject(ScaleObject(vec4(a_normal, 1.0)))).xyz;
+	}		
+	</SCRIPT>
+	
+	<script id="stdFrag" type="notjs">
+	//Fragment shaders do not have precision so we have to set it.
+	precision mediump float;
+	varying vec3 v_color;
+	varying vec2 uv;
+	varying vec3 v_normal;
+	varying vec3 v_pos;
+
+	uniform vec2 u_RES;
+	varying vec2 screenCoord;
+
+		// temp directional lighting
+		uniform vec3 u_warmColor;
+		uniform vec3 u_coolColor;
+		uniform vec3 u_dLightDir;
+
+	#define LIGHT_COUNT 8
+/*		uniform float u_ambientIntensity;
+
+	// per-light data
+	uniform vec3 u_warmColor[LIGHT_COUNT];
+	uniform vec3 u_coolColor[LIGHT_COUNT];
+	uniform vec3 u_dLightDir[LIGHT_COUNT];
+	uniform vec3 u_dLightPos[LIGHT_COUNT];
+	uniform float u_lightFalloff[LIGHT_COUNT];
+	uniform float u_lightAngle[LIGHT_COUNT];
+	uniform int u_lightType[LIGHT_COUNT];
+*/
+	uniform sampler2D u_texSampler; // texutres!!! :D
+
+	const float C_DEPTH = 16.0; // number of shades per color channel available :)
+
+	vec4 CrushCol(vec4 col)
+	{
+		return floor(col*C_DEPTH)/C_DEPTH;
+	}
+
+	int mod(int x, int y)
+	{
+		return x - y * int(floor(float(x/y)));
+	}
+
+	float Lum(vec4 col)
+	{
+		return 0.2126*pow(col.r, 2.2) + 0.7152*pow(col.g, 2.2) + 0.0722*pow(col.b, 2.2);
+	}
+
+	float Bayer2(vec2 a) {
+		a = floor(a);
+		return fract(a.x / 2. + a.y * a.y * .75);
+	}
+	
+	#define Bayer4(a)   (Bayer2 (.5 *(a)) * .25 + Bayer2(a))
+
+	
+	vec4 dither(vec4 col)
+	{	
+		vec2 pixel = vec2(screenCoord*u_RES);
+		float dithering = (Bayer4(pixel) * 2.0 - 1.0) * 0.25;
+		vec4 dCol = min(col, 1.0) + dithering;
+		float dLum = Lum(dCol);
+
+	
+
+		//col += dithering;   
+		
+		//if(dCol.g < 0.5)
+		//	dCol = vec4(1.0);
+		
+		dCol = vec4(dLum<0.5);
+		//return dCol;
+	//	dCol = vec4(dLum);
+
+		dCol = (col*dCol*dLum);
+		return vec4(vec3(clamp(col - clamp(dCol, 0.0, 0.33),0.0,1.0)), col.a);
+	}
+
+	vec4 calcDirLight(vec3 dir, vec3 cool, vec3 warm)
+	{
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec3 col = mix(cool, warm, d);
+
+		return vec4(col.rgb, 1.0);
+	}
+/*
+	vec4 calcPointLight(vec3 pos, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcSpotLight(vec3 pos, vec3 dir, float angle, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcLighting()
+	{
+		vec4 v = vec4(0.0);
+		for(int i = 0; i < LIGHT_COUNT; i++)
+		{
+			if(u_lightType[i] == 0)
+			{
+				v+=calcDirLight(u_dLightDir[i], u_coolColor[i], u_warmColor[i]);
+			}
+			else if (u_lightType[i]==1)
+			{
+				
+			}
+			else
+			{
+
+			}
+		}
+		
+		v =  max(u_ambientIntesnity, v)
+		return v;
+	}
+*/
+	void main()
+	{
+	vec4 vertCol = vec4(v_color, 1);
+	vec4 texCol = texture2D(u_texSampler, uv);
+	vec4 lightCol = calcDirLight(u_dLightDir, u_coolColor, u_warmColor);
+	//gl_FragColor = lightCol;
+	 gl_FragColor = CrushCol(dither(vertCol * texCol * lightCol));
+	}
+</script>
+
+<!--PLANET SHADERS-->	
+<script id="planetVert" type="notjs">
+	attribute vec4 a_position;
+	attribute vec3 a_normal;
+	attribute vec3 a_color;
+	attribute vec2 a_uv;
+	varying vec3 v_color;
+	varying vec3 v_normal;
+	varying vec3 v_pos;
+
+	varying vec2 uv;
+
+	uniform vec2 u_RES;
+	varying vec2 screenCoord;
+
+	uniform vec3 u_translation;
+	uniform vec3 u_rotation;
+	uniform vec3 u_scale;
+
+	uniform vec3 cameraRotation;
+	uniform vec3 cameraPosition;
+
+	uniform float n;
+	uniform float f;
+	//uniform float r;
+	//uniform float t;
+	uniform float fov;
+	uniform float aspect;
+
+	const float chunk= 12.623219;
+
+	vec4 PositionObject(vec4 pos)
+	{
+		mat4 translateM = mat4(1.0,0.0,0.0,0.0,
+								0.0,1.0,0.0,0.0,
+								0.0,0.0,1.0,0.0,
+								u_translation.x, u_translation.y, u_translation.z, 1.0);
+		return translateM*pos;
+	}
+
+	vec4 ScaleObject(vec4 pos)
+	{
+		if(length(u_scale) == 0.0)
+			return pos;
+
+		mat4 scaleM = mat4(u_scale.x,0.0,0.0,0.0,
+							0.0, u_scale.y, 0.0, 0.0,
+							0.0,0.0,u_scale.z,0.0,
+							0.0,0.0,0.0,1.0);
+
+		return scaleM*pos;
+	}
+
+	vec4 RotateObject(vec4 pos)
+	{
+		vec3 c = cos(u_rotation);
+		vec3 s = sin(u_rotation);
+
+		mat4 Rx = mat4(1.0, 0.0, 0.0, 0.0,
+					   0.0, c.x, s.x, 0.0,
+					   0.0, -s.x, c.x, 0.0,
+					   0.0, 0.0, 0.0, 1.0);
+
+		mat4 Ry = mat4(c.y, 0.0, -s.y, 0.0,
+						0.0, 1.0, 0.0, 0.0,
+						s.y, 0.0, c.y, 0.0,
+						0.0, 0.0, 0.0, 1.0);
+		
+
+		mat4 Rz = mat4(c.z, s.z, 0.0, 0.0,
+						-s.z, c.z, 0.0, 0.0,
+						0.0, 0.0, 1.0,0.0,
+						0.0, 0.0, 0.0, 1.0);
+		return Rx * Ry * Rz * pos;
+	}
+
+	// Symetric projection
+	vec4 Project(vec4 pos)
+	{
+		float nr = 1.0 / tan(radians(fov) * 0.5);
+		float nt = nr / aspect;
+		
+		mat4 projectM = mat4(nr, 0.0, 0.0, 0.0,
+							 0.0,nt, 0.0, 0.0,
+							 0.0, 0.0, -(f+n)/(f-n), -1.0,
+							 0.0, 0.0, -2.0*(f*n)/(f-n), 0.0);
+
+		return projectM * pos;
+	}
+
+	vec4 MoveCamera(vec4 pos)
+	{
+		vec3 c = cos(cameraRotation);
+		vec3 s = sin(cameraRotation);
+
+		
+		mat4 Rx = mat4(1.0, 0.0, 0.0, 0.0,
+					   0.0, c.x, s.x, 0.0,
+					   0.0, -s.x, c.x, 0.0,
+					   0.0, 0.0, 0.0, 1.0);
+
+		mat4 Ry = mat4(c.y, 0.0, -s.y, 0.0,
+						0.0, 1.0, 0.0, 0.0,
+						s.y, 0.0, c.y, 0.0,
+						0.0, 0.0, 0.0, 1.0);
+		
+
+		mat4 Rz = mat4(c.z, s.z, 0.0, 0.0,
+						-s.z, c.z, 0.0, 0.0,
+						0.0, 0.0, 1.0,0.0,
+						0.0, 0.0, 0.0, 1.0);
+
+		mat4 translateM = mat4(1.0,0.0,0.0,0.0,
+		0.0,1.0,0.0,0.0,
+		0.0,0.0,-1.0,0.0,
+		-cameraPosition.x, -cameraPosition.y, cameraPosition.z, 1.0);
+
+		return Rx*Ry*Rz*translateM*pos;
+	}
+
+	vec4 ChunkPos(vec4 pos)
+	{
+		return  floor(pos*chunk)/chunk;
+	}
+
+	#define PI 3.1415926538
+
+	vec2 SphereUvs(vec2 inPos)
+	{
+		return asin(inPos)/PI + 0.5;
+	}
+
+	void main()
+	{
+		v_color = a_color;
+
+		uv = a_uv;
+
+		vec4 pos = Project(ChunkPos(MoveCamera(PositionObject(RotateObject(ScaleObject(a_position))))));
+		gl_Position = pos;
+		screenCoord = (pos.xy/pos.w+1.0)*0.5;
+
+		v_normal = normalize(RotateObject(ScaleObject(vec4(a_normal, 1.0)))).xyz;
+	}		
+	</SCRIPT>
+	
+	<script id="planetFrag" type="notjs">
+	//Fragment shaders do not have precision so we have to set it.
+	precision mediump float;
+	varying vec3 v_color;
+	varying vec2 uv;
+	varying vec3 v_normal;
+	varying vec3 v_pos;
+
+	uniform vec2 u_RES;
+	varying vec2 screenCoord;
+
+		// temp directional lighting
+		uniform vec3 u_warmColor;
+		uniform vec3 u_coolColor;
+		uniform vec3 u_dLightDir;
+
+	#define LIGHT_COUNT 8
+/*		uniform float u_ambientIntensity;
+
+	// per-light data
+	uniform vec3 u_warmColor[LIGHT_COUNT];
+	uniform vec3 u_coolColor[LIGHT_COUNT];
+	uniform vec3 u_dLightDir[LIGHT_COUNT];
+	uniform vec3 u_dLightPos[LIGHT_COUNT];
+	uniform float u_lightFalloff[LIGHT_COUNT];
+	uniform float u_lightAngle[LIGHT_COUNT];
+	uniform int u_lightType[LIGHT_COUNT];
+*/
+	uniform sampler2D u_texSampler; // texutres!!! :D
+
+	const float C_DEPTH = 16.0; // number of shades per color channel available :)
+
+	vec4 CrushCol(vec4 col)
+	{
+		return floor(col*C_DEPTH)/C_DEPTH;
+	}
+
+	int mod(int x, int y)
+	{
+		return x - y * int(floor(float(x/y)));
+	}
+
+	float Lum(vec4 col)
+	{
+		return 0.2126*pow(col.r, 2.2) + 0.7152*pow(col.g, 2.2) + 0.0722*pow(col.b, 2.2);
+	}
+
+	float Bayer2(vec2 a) {
+		a = floor(a);
+		return fract(a.x / 2. + a.y * a.y * .75);
+	}
+	
+	#define Bayer4(a)   (Bayer2 (.5 *(a)) * .25 + Bayer2(a))
+
+	
+	vec4 dither(vec4 col)
+	{	
+		vec2 pixel = vec2(screenCoord*u_RES);
+		float dithering = (Bayer4(pixel) * 2.0 - 1.0) * 0.25;
+		vec4 dCol = min(col, 1.0) + dithering;
+		float dLum = Lum(dCol);
+
+	
+
+		//col += dithering;   
+		
+		//if(dCol.g < 0.5)
+		//	dCol = vec4(1.0);
+		
+		dCol = vec4(dLum<0.5);
+		//return dCol;
+	//	dCol = vec4(dLum);
+
+		dCol = (col*dCol*dLum);
+		return vec4(vec3(clamp(col - clamp(dCol, 0.0, 0.33),0.0,1.0)), col.a);
+	}
+
+	vec4 calcDirLight(vec3 dir, vec3 cool, vec3 warm)
+	{
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec3 col = mix(cool, warm, d);
+
+		return vec4(col.rgb, 1.0);
+	}
+/*
+	vec4 calcPointLight(vec3 pos, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcSpotLight(vec3 pos, vec3 dir, float angle, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcLighting()
+	{
+		vec4 v = vec4(0.0);
+		for(int i = 0; i < LIGHT_COUNT; i++)
+		{
+			if(u_lightType[i] == 0)
+			{
+				v+=calcDirLight(u_dLightDir[i], u_coolColor[i], u_warmColor[i]);
+			}
+			else if (u_lightType[i]==1)
+			{
+				
+			}
+			else
+			{
+
+			}
+		}
+		
+		v =  max(u_ambientIntesnity, v)
+		return v;
+	}
+*/
+
+// pfragmain
+	const vec3 grass = vec3(0.6,1.0,0.2);
+	const vec3 water = vec3(0.1,0.3,1.0);
+
+	float fChunk(float c, float amt)
+	{
+		return floor(c*amt)/amt;
+	}
+
+	void main()
+	{
+	//vec4 vertCol = vec4(vec3(v_color.r*mix(v_color.g,v_color.b, 0.5)), 1);
+	float val =  v_color.r*clamp(mix(v_color.g,v_color.g+v_color.b, 0.75), 0.5,1.0);
+
+	//vec4 vertCol = vec4(vec3(fChunk(val, 8.0)), 1.0);
+	
+	vec2 mUv = vec2(fChunk(val, 10.0), fChunk(uv.x*uv.y, 10.0));
+	//gl_FragColor=vec4(mUv.yyy, 1.0);
+
+	vec4 vertCol = texture2D(u_texSampler, mUv);
+
+	//vec4 texCol = texture2D(u_texSampler, uv);
+	vec4 lightCol = calcDirLight(u_dLightDir, u_coolColor, u_warmColor);
+	//gl_FragColor = lightCol;
+	 gl_FragColor = CrushCol(dither(vertCol * lightCol));
+	}
+</script>
+
+
+	
+<script id="cloudFrag" type="notjs">
+	//Fragment shaders do not have precision so we have to set it.
+	precision mediump float;
+	varying vec3 v_color;
+	varying vec2 uv;
+	varying vec3 v_normal;
+	varying vec3 v_pos;
+
+	uniform vec2 u_RES;
+	varying vec2 screenCoord;
+
+		// temp directional lighting
+		uniform vec3 u_warmColor;
+		uniform vec3 u_coolColor;
+		uniform vec3 u_dLightDir;
+
+	#define LIGHT_COUNT 8
+/*		uniform float u_ambientIntensity;
+
+	// per-light data
+	uniform vec3 u_warmColor[LIGHT_COUNT];
+	uniform vec3 u_coolColor[LIGHT_COUNT];
+	uniform vec3 u_dLightDir[LIGHT_COUNT];
+	uniform vec3 u_dLightPos[LIGHT_COUNT];
+	uniform float u_lightFalloff[LIGHT_COUNT];
+	uniform float u_lightAngle[LIGHT_COUNT];
+	uniform int u_lightType[LIGHT_COUNT];
+*/
+	uniform sampler2D u_texSampler; // texutres!!! :D
+
+	const float C_DEPTH = 16.0; // number of shades per color channel available :)
+
+	vec4 CrushCol(vec4 col)
+	{
+		return floor(col*C_DEPTH)/C_DEPTH;
+	}
+
+	int mod(int x, int y)
+	{
+		return x - y * int(floor(float(x/y)));
+	}
+
+	float Lum(vec4 col)
+	{
+		return 0.2126*pow(col.r, 2.2) + 0.7152*pow(col.g, 2.2) + 0.0722*pow(col.b, 2.2);
+	}
+
+	float Bayer2(vec2 a) {
+		a = floor(a);
+		return fract(a.x / 2. + a.y * a.y * .75);
+	}
+	
+	#define Bayer4(a)   (Bayer2 (.5 *(a)) * .25 + Bayer2(a))
+
+	
+	vec4 dither(vec4 col)
+	{	
+		vec2 pixel = vec2(screenCoord*u_RES);
+		float dithering = (Bayer4(pixel) * 2.0 - 1.0) * 0.25;
+		vec4 dCol = min(col, 1.0) + dithering;
+		float dLum = Lum(dCol);
+
+	
+
+		//col += dithering;   
+		
+		//if(dCol.g < 0.5)
+		//	dCol = vec4(1.0);
+		
+		dCol = vec4(dLum<0.5);
+		//return dCol;
+	//	dCol = vec4(dLum);
+
+		dCol = (col*dCol*dLum);
+		return vec4(vec3(clamp(col - clamp(dCol, 0.0, 0.33),0.0,1.0)), col.a);
+	}
+
+	vec4 calcDirLight(vec3 dir, vec3 cool, vec3 warm)
+	{
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec3 col = mix(cool, warm, d);
+
+		return vec4(col.rgb, 1.0);
+	}
+/*
+	vec4 calcPointLight(vec3 pos, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcSpotLight(vec3 pos, vec3 dir, float angle, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcLighting()
+	{
+		vec4 v = vec4(0.0);
+		for(int i = 0; i < LIGHT_COUNT; i++)
+		{
+			if(u_lightType[i] == 0)
+			{
+				v+=calcDirLight(u_dLightDir[i], u_coolColor[i], u_warmColor[i]);
+			}
+			else if (u_lightType[i]==1)
+			{
+				
+			}
+			else
+			{
+
+			}
+		}
+		
+		v =  max(u_ambientIntesnity, v)
+		return v;
+	}
+*/
+
+// pfragmain
+	const vec3 grass = vec3(0.6,1.0,0.2);
+	const vec3 water = vec3(0.1,0.3,1.0);
+
+	float fChunk(float c, float amt)
+	{
+		return floor(c*amt)/amt;
+	}
+
+	void main()
+	{
+	//vec4 vertCol = vec4(vec3(v_color.r*mix(v_color.g,v_color.b, 0.5)), 1);
+	float val = (v_color.r-0.01)*clamp(mix(v_color.g,v_color.b, 0.25), 0.0 ,1.0);
+	
+	vec2 mUv = vec2(0.5);
+	//gl_FragColor=vec4(mUv.yyy, 1.0);
+
+	vec4 vertCol = texture2D(u_texSampler, mUv);
+
+	//vertCol.a = 1.0;
+	vertCol.a = clamp(fChunk(val-0.1, 4.0), 0.0,1.0);
+	if(vertCol.a <= 0.01)
+		discard;
+
+	//vec4 texCol = texture2D(u_texSampler, uv);
+	vec4 lightCol = calcDirLight(u_dLightDir, u_coolColor, u_warmColor);
+	//gl_FragColor = lightCol;
+	 gl_FragColor = CrushCol(dither(vertCol * lightCol));
+	}
+</script>
+<!--END PLANET SHADERS-->
+
+<!--SKYBOX SHADER-->
+<script id="skyVert" type="notjs">
+	precision mediump float;
+	attribute vec4 a_position;
+	attribute vec3 a_normal;
+	attribute vec3 a_color;
+	attribute vec2 a_uv;
+	varying vec3 v_color;
+	varying vec3 v_normal;
+	varying vec3 v_pos;
+
+	varying vec2 uv;
+
+	uniform vec2 u_RES;
+	varying vec2 screenCoord;
+
+	uniform vec3 u_translation;
+	uniform vec3 u_rotation;
+	uniform vec3 u_scale;
+
+	uniform vec3 cameraRotation;
+	uniform vec3 cameraPosition;
+
+	uniform float n;
+	uniform float f;
+	//uniform float r;
+	//uniform float t;
+	uniform float fov;
+	uniform float aspect;
+
+	const float chunk= 12.623219;
+
+	vec4 PositionObject(vec4 pos)
+	{
+		mat4 translateM = mat4(1.0,0.0,0.0,0.0,
+								0.0,1.0,0.0,0.0,
+								0.0,0.0,1.0,0.0,
+								u_translation.x, u_translation.y, u_translation.z, 1.0);
+		return translateM*pos;
+	}
+
+	vec4 ScaleObject(vec4 pos)
+	{
+		if(length(u_scale) == 0.0)
+			return pos;
+
+		mat4 scaleM = mat4(u_scale.x,0.0,0.0,0.0,
+							0.0, u_scale.y, 0.0, 0.0,
+							0.0,0.0,u_scale.z,0.0,
+							0.0,0.0,0.0,1.0);
+
+		return scaleM*pos;
+	}
+
+	vec4 RotateObject(vec4 pos)
+	{
+		vec3 c = cos(u_rotation);
+		vec3 s = sin(u_rotation);
+
+		mat4 Rx = mat4(1.0, 0.0, 0.0, 0.0,
+					   0.0, c.x, s.x, 0.0,
+					   0.0, -s.x, c.x, 0.0,
+					   0.0, 0.0, 0.0, 1.0);
+
+		mat4 Ry = mat4(c.y, 0.0, -s.y, 0.0,
+						0.0, 1.0, 0.0, 0.0,
+						s.y, 0.0, c.y, 0.0,
+						0.0, 0.0, 0.0, 1.0);
+		
+
+		mat4 Rz = mat4(c.z, s.z, 0.0, 0.0,
+						-s.z, c.z, 0.0, 0.0,
+						0.0, 0.0, 1.0,0.0,
+						0.0, 0.0, 0.0, 1.0);
+		return Rx * Ry * Rz * pos;
+	}
+
+	// Symetric projection
+	vec4 Project(vec4 pos)
+	{
+		float nr = 1.0 / tan(radians(fov) * 0.5);
+		float nt = nr / aspect;
+		
+		mat4 projectM = mat4(nr, 0.0, 0.0, 0.0,
+							 0.0,nt, 0.0, 0.0,
+							 0.0, 0.0, -(f+n)/(f-n), -1.0,
+							 0.0, 0.0, -2.0*(f*n)/(f-n), 0.0);
+
+		return projectM * pos;
+	}
+
+	vec4 MoveCamera(vec4 pos)
+	{
+		vec3 c = cos(cameraRotation);
+		vec3 s = sin(cameraRotation);
+
+		
+		mat4 Rx = mat4(1.0, 0.0, 0.0, 0.0,
+					   0.0, c.x, s.x, 0.0,
+					   0.0, -s.x, c.x, 0.0,
+					   0.0, 0.0, 0.0, 1.0);
+
+		mat4 Ry = mat4(c.y, 0.0, -s.y, 0.0,
+						0.0, 1.0, 0.0, 0.0,
+						s.y, 0.0, c.y, 0.0,
+						0.0, 0.0, 0.0, 1.0);
+		
+
+		mat4 Rz = mat4(c.z, s.z, 0.0, 0.0,
+						-s.z, c.z, 0.0, 0.0,
+						0.0, 0.0, 1.0,0.0,
+						0.0, 0.0, 0.0, 1.0);
+
+		mat4 translateM = mat4(1.0,0.0,0.0,0.0,
+		0.0,1.0,0.0,0.0,
+		0.0,0.0,-1.0,0.0,
+		-cameraPosition.x, -cameraPosition.y, cameraPosition.z, 1.0);
+
+		return Rx*Ry*Rz*translateM*pos;
+	}
+
+	vec4 ChunkPos(vec4 pos)
+	{
+		return  floor(pos*chunk)/chunk;
+	}
+
+	#define PI 3.1415926538
+
+	vec2 SphereUvs(vec2 inPos)
+	{
+		return asin(inPos)/PI + 0.5;
+	}
+
+	void main()
+	{
+		v_color = a_color;
+
+		uv = a_uv;
+		gl_Position = a_position;
+		vec4 pos = Project(ChunkPos(MoveCamera(PositionObject(RotateObject(ScaleObject(a_position))))));
+		//v_pos = pos.xyz;
+		
+		screenCoord = (pos.xy/pos.w+1.0)*0.5;
+
+		v_normal = normalize(RotateObject(ScaleObject(vec4(a_normal, 1.0)))).xyz;
+	}		
+	</SCRIPT>
+	
+	<script id="skyFrag" type="notjs">
+	//Fragment shaders do not have precision so we have to set it.
+	precision mediump float;
+	varying vec3 v_color;
+	varying vec2 uv;
+	varying vec3 v_normal;
+	varying vec3 v_pos;
+
+	uniform vec2 u_RES;
+	varying vec2 screenCoord;
+
+	uniform vec3 cameraRotation;
+
+		// temp directional lighting
+		uniform vec3 u_warmColor;
+		uniform vec3 u_coolColor;
+		uniform vec3 u_dLightDir;
+
+	#define LIGHT_COUNT 8
+/*		uniform float u_ambientIntensity;
+
+	// per-light data
+	uniform vec3 u_warmColor[LIGHT_COUNT];
+	uniform vec3 u_coolColor[LIGHT_COUNT];
+	uniform vec3 u_dLightDir[LIGHT_COUNT];
+	uniform vec3 u_dLightPos[LIGHT_COUNT];
+	uniform float u_lightFalloff[LIGHT_COUNT];
+	uniform float u_lightAngle[LIGHT_COUNT];
+	uniform int u_lightType[LIGHT_COUNT];
+*/
+	uniform sampler2D u_texSampler; // texutres!!! :D
+
+	const float C_DEPTH = 16.0; // number of shades per color channel available :)
+
+	vec4 CrushCol(vec4 col)
+	{
+		return floor(col*C_DEPTH)/C_DEPTH;
+	}
+
+	int mod(int x, int y)
+	{
+		return x - y * int(floor(float(x/y)));
+	}
+
+	float Lum(vec4 col)
+	{
+		return 0.2126*pow(col.r, 2.2) + 0.7152*pow(col.g, 2.2) + 0.0722*pow(col.b, 2.2);
+	}
+
+	float Bayer2(vec2 a) {
+		a = floor(a);
+		return fract(a.x / 2. + a.y * a.y * .75);
+	}
+	
+	#define Bayer4(a)   (Bayer2 (.5 *(a)) * .25 + Bayer2(a))
+
+	
+	vec4 dither(vec4 col)
+	{	
+		vec2 pixel = vec2(screenCoord*u_RES);
+		float dithering = (Bayer4(pixel) * 2.0 - 1.0) * 0.25;
+		vec4 dCol = min(col, 1.0) + dithering;
+		float dLum = Lum(dCol);
+
+	
+
+		//col += dithering;   
+		
+		//if(dCol.g < 0.5)
+		//	dCol = vec4(1.0);
+		
+		dCol = vec4(dLum<0.5);
+		//return dCol;
+	//	dCol = vec4(dLum);
+
+		dCol = (col*dCol*dLum);
+		return vec4(vec3(clamp(col - clamp(dCol, 0.0, 0.33),0.0,1.0)), col.a);
+	}
+
+	vec4 calcDirLight(vec3 dir, vec3 cool, vec3 warm)
+	{
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec3 col = mix(cool, warm, d);
+
+		return vec4(col.rgb, 1.0);
+	}
+/*
+	vec4 calcPointLight(vec3 pos, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcSpotLight(vec3 pos, vec3 dir, float angle, float fallOff, vec4 cool, vec4 warm)
+	{
+		vec3 dir = normalize(gl_Position - pos);
+		float dist = length(gl_Position - pos);
+		float d = (dot(normalize(v_normal), dir)+1.0)*0.5;
+		//float f = u_lightIntensity;
+
+		vec4 col = mix(cool, warm, d * (1.0-dist/fallOff));
+
+		return col;
+	}
+
+	vec4 calcLighting()
+	{
+		vec4 v = vec4(0.0);
+		for(int i = 0; i < LIGHT_COUNT; i++)
+		{
+			if(u_lightType[i] == 0)
+			{
+				v+=calcDirLight(u_dLightDir[i], u_coolColor[i], u_warmColor[i]);
+			}
+			else if (u_lightType[i]==1)
+			{
+				
+			}
+			else
+			{
+
+			}
+		}
+		
+		v =  max(u_ambientIntesnity, v)
+		return v;
+	}
+*/
+
+	#define PI 3.1459
+	void main()
+	{
+	vec4 vertCol = vec4(0,0,0, 1);
+
+	vec2 skyuv = uv+ 0.5*cameraRotation.xy/PI;
+
+	vec4 texCol = texture2D(u_texSampler, skyuv);
+	vec4 lightCol = calcDirLight(u_dLightDir, u_coolColor, u_warmColor);
+	//gl_FragColor = lightCol;
+	 //gl_FragColor = CrushCol(dither(vertCol * texCol * lightCol));
+
+	 gl_FragColor=vec4(vec3(texCol.x > 0.98),1.0);
+	}
+</script>
+
+		<script>
+		class InitWebGLProgram
+		{
+			constructor()
+			{
+				gl.viewport(0,0, gl.canvas.width, gl.canvas.height);
+
+				gl.clearColor(1,1,1,1);
+				gl.clear(gl.COLOR_BUFFER_BIT);
+				gl.enable(gl.DEPTH_TEST);
+			
+			}
+			createShader(type,source)
+			{
+				var shader = gl.createShader(type);
+				gl.shaderSource(shader, source);
+				gl.compileShader(shader);
+
+				var success = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+				if(success)
+				{
+					return shader;
+				}
+
+				console.error(gl.getShaderInfoLog(shader));
+				gl.deleteShader(shader);
+			}
+			
+			createProgram(vs,fs)
+			{
+				var program = gl.createProgram();
+				gl.attachShader(program, vs);
+				gl.attachShader(program, fs);
+				gl.linkProgram(program);
+				var success = gl.getProgramParameter(program, gl.LINK_STATUS);
+				if(success)
+				{
+					return program;
+				}
+
+				console.error(gl.getProgramInfoLog(program));
+				gl.deleteProgram(program);
+			}
+		}
+
+
+		function loadShader(vertName="stdVert", fragName="stdFrag")
+		{
+			let vertexShaderSource=document.getElementById(vertName).text;
+			let fragmentShaderSource = document.getElementById(fragName).text;
+			let vertexShader = webGL.createShader(gl.VERTEX_SHADER, vertexShaderSource);
+			let fragmentShader = webGL.createShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+			return webGL.createProgram(vertexShader, fragmentShader);
+		}
+
+		var webGL;
+		class main
+		{
+			constructor()
+			{
+				this.webGL= new InitWebGLProgram();
+				webGL = this.webGL;
+				this.programs = [];
+
+				this.programs[0] = loadShader();
+		
+				this.programs[1] = loadShader("planetVert", "planetFrag");
+
+				this.programs[2] = loadShader("skyVert", "skyFrag");
+
+				this.programs[3] = loadShader("planetVert", "cloudFrag");
+				
+				this.curProgram = 0;
+				
+
+				this.keys = [];
+
+				this.gameObjectCount = 0;
+				this.gameObjects = [];
+				this.lights = [];
+
+				this.renderBatches = [[]];
+
+				this.prevTime = 0;
+
+				this.physChunkSize = 80.0;
+				this.physChunks={};
+
+				this.player = null;
+
+				// world setup
+				
+				for(let i = 0; i < this.programs.length; i++){
+				
+				gl.useProgram(this.programs[i]);
+				var viewFOVLoc = gl.getUniformLocation(this.programs[i], 'fov');
+				gl.uniform1f(viewFOVLoc, 70.0);
+				var viewAspectLoc = gl.getUniformLocation(this.programs[i], 'aspect');
+				gl.uniform1f(viewAspectLoc, 1.0);
+
+				var viewNearLoc = gl.getUniformLocation(this.programs[i], 'n');
+				gl.uniform1f(viewNearLoc, 0.1);
+				var viewFarLoc = gl.getUniformLocation(this.programs[i], 'f');
+				gl.uniform1f(viewFarLoc, 200.0);
+			
+				var resLoc = gl.getUniformLocation(this.programs[i], 'u_RES');
+				gl.uniform2f(resLoc, canvas.width, canvas.height);
+
+				}
+				gl.useProgram(this.programs[this.curProgram]); 
+				this.setup();
+
+				requestAnimationFrame(main.mainLoop);
+			}	
+
+			setup()
+			{
+				let p = new FlyingPlayer();
+				p.renderer = new BuildObjFromVerts(CreateSphere()).renderer;
+				p.renderer.transform = p.transform;
+				p.renderer.rebuffer();
+				p.transform.loc = [0.0,0.0,-1000.0];
+				this.addObj(p, "Player");
+				this.player = p;
+
+				let test = new BuildObjFromVerts(CreateSphere());
+				test.transform.scale = [0.25, 0.25,0.25];
+				test.updateFunc = d =>
+				{
+					test.visible = showPlayerModel;
+					test.transform.loc = VecAdd(p.transform.loc, p.transform.forward);
+					test.transform.setRot(p.transform.rot);
+				};
+
+				this.addObj(test);
+				
+			/*	let testCube = new BuildObjFromVerts(CreateCube([0.0,0.0,0.0], 1.0, 2.0), [0.0,0.0,-150.0], [0.0,0.0,0.0], [0.25,1.0,0.4]);
+				testCube.transform.scale=[5.0,5.0,5.0];
+				testCube.collider = new BoxCollider(5.0,5.0,5.0);
+				testCube.static = true;
+				this.addObj(testCube);
+				*/
+				// test build solar system
+				BuildSystem(this);
+
+				//this.old_testScene();
+			}
+
+			old_testScene()
+			{
+				//let dLight = new Light([1.7,1.5,1.4], [0.05,0.2,0.5]);
+				//this.addObj(dLight);
+
+
+				for(let i = 0; i < 300; i++)
+				{
+					let o = this.generateAsteroid();
+					o.name += " " + i;
+
+					let f = 375 + Math.random()*60;
+					let angle=Math.random()*Math.PI*2.0;
+
+					o.transform.loc = [f*Math.cos(angle), Math.random() *  12.0-6.0, f*Math.sin(angle)]
+				}
+			}
+
+			generateAsteroid(s=0.3)
+			{
+				let o = new Asteroid();
+				this.addObj(o);
+				
+				return o;
+			}
+
+			helloWorld()
+			{
+				let o = BuildObjFromVerts(CreateSphere());
+				o.updateFunc = d =>{
+					o.transform.rot[0]+=2.5*d;
+					o.transform.loc[2] = -2.5+ 5.0*Math.sin(2.5*m.prevTime*0.001);
+				};
+
+				this.addObj(o);
+				
+				cam.transform.loc=[0.0,0.0,-5.0];
+			}
+
+			// weird idea but, returns a data structure as such: [bool hit, float hitDepth, vec3 hitDir]
+			checkCollision(gameObj)
+			{
+				
+				let result = {hit:false, trigger:false, dist:null, dir:null, force:null, id:null};
+
+				if(gameObj.collider == null)
+					return result;
+
+				let closeObjs = this.getObjsInChunkByBounds(gameObj.transform.loc, gameObj.collider.bounds());
+				//console.log(closeObjs);
+
+				for(let i = 0; i < closeObjs.length; i++)
+				{
+					let o = closeObjs[i];
+					if(o.id != gameObj.id && o.collider != null)
+					{
+						
+						// diff = to - from
+						// this essentially centers the world coords on the object we're checking
+						let diffA = VecAdd(o.transform.loc, VecScale(gameObj.transform.loc, -1.0));
+						let diffB = VecAdd(gameObj.transform.loc, VecScale(o.transform.loc, -1.0));
+						// distance between the objects
+						let dist = VecMag(diffA);
+
+						let colA = o.collider.dist(diffA);
+						let colB = gameObj.collider.dist(diffB);
+
+						// if this is negative, we have collided with -colAmt depth
+						// otherwise, there is colAmt distance between the shapes
+						let colAmt = colA.amt+colB.amt-dist;
+						//console.log(colAmt);
+						
+						if(colAmt < 0)
+						{
+							let f = VecMag(VecAdd(gameObj.velocity, VecScale(o.velocity, -1.0)));
+							result = { hit:true, trigger:o.trigger, dist:colAmt, dir:colA.dir, force:f, id:m.gameObjects.indexOf(o) };
+							o.onCollisionEnter({ hit:true, trigger:gameObj.trigger, dist:colAmt, dir:colB.dir, force:f, id:m.gameObjects.indexOf(gameObj) });
+							return result;
+						}
+					}
+		}
+			return result;
+			}
+
+			updateAll(deltaTime)
+			{		
+					this.gameObjects.forEach(o=>{
+						o.update(deltaTime);
+					});
+
+					this.calcPhysChunks();
+
+					this.gameObjects.forEach(o=>{
+						if(o.phys)
+							o.physUpdate(deltaTime);
+					});
+
+					this.gameObjects.forEach(o=>{
+						o.lateUpdateFunc(deltaTime);
+					});
+			}
+
+		
+
+			p_chunk(pos)
+			{
+				let r = [];
+				for(let p = 0; p < pos.length; p++)
+				{
+					r[p] = (Math.floor(pos[p]/this.physChunkSize));
+				}
+
+				return r;
+			}
+
+			getObjsInChunk(chunkPos)
+			{
+				if(this.physChunks[chunkPos] == undefined)
+						return [];
+				else
+					return this.physChunks[chunkPos]
+			}
+
+			
+			getObjsInChunkByBounds(realPos, bounds)
+			{
+				let result = [];
+				let checked = [];
+				/*let prevBoundChunk = this.p_chunk(VecAdd(realPos, bounds[0]));
+				for(let i = 0; i < bounds.length; i++)
+				{
+					let nextBoundChunk = this.p_chunk(VecAdd(realPos, bounds[i]));
+					let dif = VecAdd(nextBoundChunk, VecScale(prevBoundChunk, -1.0))
+					if(VecMag(dif) > 2.0)
+						console.log(dif);
+					for(let x = 0; x<=Math.abs(dif[0]); x++)
+					{
+						for(let y = 0; y<=Math.abs(dif[1]); y++)
+						{
+							for(let z = 0; z<=Math.abs(dif[2]); z++)
+							{
+								let nChunk = VecAdd(prevBoundChunk, [x*Math.sign(dif[0]),y*Math.sign(dif[1]),z*Math.sign(dif[2])]);
+							
+								let s = ""+nChunk[0] + nChunk[1] + nChunk[2];
+								if(!checked.includes(s))
+								{
+									//console.log(s);
+								//	console.log(this.getObjsInChunk(tChunk));
+									extendArray(result, this.getObjsInChunk(nChunk));
+
+									checked.push(s);
+								}
+							}
+						}
+					}
+					prevBoundChunk=nextBoundChunk;
+				}*/
+
+				let cornerABound = this.p_chunk(VecAdd(realPos, bounds[0]));
+				let cornerBBound = this.p_chunk(VecAdd(realPos, bounds[bounds.length-1]));
+				
+					let dif = VecAdd(cornerBBound, VecScale(cornerABound, -1.0))
+					
+					for(let x = 0; x<=Math.abs(dif[0]); x++)
+					{
+						for(let y = 0; y<=Math.abs(dif[1]); y++)
+						{
+							for(let z = 0; z<=Math.abs(dif[2]); z++)
+							{
+								let nChunk = VecAdd(cornerABound, [x*Math.sign(dif[0]),y*Math.sign(dif[1]),z*Math.sign(dif[2])]);
+							
+								let s = ""+nChunk[0] + nChunk[1] + nChunk[2];
+								if(!checked.includes(s))
+								{
+									//console.log(s);
+								//	console.log(this.getObjsInChunk(tChunk));
+									extendArray(result, this.getObjsInChunk(nChunk));
+
+									checked.push(s);
+								}
+							}
+						}
+					}
+
+				return result;
+			}
+
+			// im sorry.
+			getObjsInSurroundingChunk(chunkPos)
+			{
+				let result = this.getObjsInChunk(chunkPos);
+
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,0,-1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,0,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,-1,-1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,1,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,-1,0])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,1,0])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,-1,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [0,1,-1])));
+
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,0,-1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,0,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,-1,-1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,1,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,-1,0])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,1,0])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,-1,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [-1,1,-1])));
+				
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,0,-1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,0,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,-1,-1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,1,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,-1,0])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,1,0])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,-1,1])));
+				result.concat(this.getObjsInChunk(VecAdd(chunkPos, [1,1,-1])));
+
+				return result;
+			}
+
+			calcPhysChunks()
+			{
+				this.physChunks = {};
+
+				for(let i = 0; i<this.gameObjects.length; i++)
+				{
+					let o = this.gameObjects[i];
+					if(o.collider==null)
+						continue;
+
+					let pos = this.p_chunk(o.transform.loc);
+
+					// TODO, include bounds of object in chunk-check
+					if(this.physChunks[pos] == undefined)
+						this.physChunks[pos] = [];
+
+					this.physChunks[pos].push(o);
+				}
+			}
+
+			renderBatch_old(batchId)
+			{
+				//console.log("Batch#: " + batchId + " " + this.renderBatches[batchId].length)
+				if(this.renderBatches[batchId].length < 1)
+					return;
+
+				/*let texture = this.gameObjects[this.renderBatches[batchId][0]].renderer.texture;
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, texture);
+				*/
+				if(batchId>0)
+					this.gameObjects[this.getObjIndexById(this.renderBatches[batchId][0])].renderer.batchBuffer(this.programs[this.curProgram]);
+				
+				for(let i = 0; i<this.renderBatches[batchId].length; i++)
+				{
+					let index = this.getObjIndexById(this.renderBatches[batchId][i]);
+					let o = this.gameObjects[index];
+					if(o == null || o == undefined)
+						continue;
+
+					if(o.visible && o.renderer !=null)
+					{
+						if(o.program != this.curProgram)
+							{
+								//console.log("switching to program " + o.program);
+								gl.useProgram(this.programs[o.program]);
+								this.curProgram=o.program;
+							}
+						//o.renderer.batchBuffer(this.program);
+						o.renderer.render(this.programs[this.curProgram]);
+					}
+				}
+			}
+
+			renderBatch(batchId)
+			{
+				//console.log("Batch#: " + batchId + " " + this.renderBatches[batchId].length)
+				if(this.renderBatches[batchId] == undefined || this.renderBatches[batchId].length < 1)
+					return;
+
+				/*let texture = this.gameObjects[this.renderBatches[batchId][0]].renderer.texture;
+				gl.activeTexture(gl.TEXTURE0);
+				gl.bindTexture(gl.TEXTURE_2D, texture);
+				*/
+				if(batchId!=0)
+					{
+						
+						let o =this.renderBatches[batchId][0];
+						if(o.program != this.curProgram)
+							{
+							//	console.log("switching to program " + o.program);
+								this.curProgram=o.program;
+								gl.useProgram(this.programs[this.curProgram]);
+								
+							}
+
+							o.renderer.batchBuffer(this.programs[this.curProgram]);
+					}
+				
+				for(let i = 0; i<this.renderBatches[batchId].length; i++)
+				{
+					let o=this.renderBatches[batchId][i];
+					//console.log("T:"+m.prevTime+" Batch#"+batchId+" : " + o.name + o.id);
+					//let o = this.gameObjects[index];
+					if(o == null || o == undefined)
+						continue;
+
+					if(o.visible && o.renderer !=null)
+					{
+						if(o.program != this.curProgram)
+							{
+								//console.log("switching to program " + o.program);
+								this.curProgram=o.program;
+								gl.useProgram(this.programs[this.curProgram]);
+							}
+						//o.renderer.batchBuffer(this.program);
+						o.renderer.render(this.programs[this.curProgram]);
+					}
+				}
+			}
+
+			batchRenderAll()
+			{
+				for(let batch = 0; batch<this.renderBatches.length; batch++)
+				{
+					this.renderBatch(batch);
+				}
+			}
+
+			renderAll()
+			{
+		
+				this.gameObjects.forEach(o =>{
+					
+				//console.log(s.vertCount());
+				if(o.visible && o.renderer!=null){
+					o.renderer.render(this.programs[this.curProgram]);
+				}
+				});
+			}
+
+			addObj(obj, name=null)
+			{
+				obj.id = this.gameObjectCount;
+				if(name!=null)
+					obj.name=name;
+				
+				this.gameObjects.push(obj);
+				this.gameObjectCount++;
+
+				if(obj.renderer != null)
+				{
+					if(this.renderBatches[obj.renderer.batchId] == undefined)
+						this.renderBatches[obj.renderer.batchId] = [];
+
+					this.renderBatches[obj.renderer.batchId].push(obj);
+				}
+
+				if(obj.constructor.name.includes("Light"))
+				{
+					this.lights.push(obj);
+				}
+			}
+
+			getObjIndexById(id)
+			{
+				return binarySearch(this.gameObjects, id, (id,other) => {
+					return id - other.id;
+				});
+			}
+
+			removeObj(obj)
+			{
+				if(obj.renderer != null)
+				{
+					let i = this.renderBatches[obj.renderer.batchId].indexOf(obj);
+					this.renderBatches[obj.renderer.batchId].splice(i,1);
+				}
+
+				if(obj.constructor.name.includes("Light"))
+				{
+					let i = this.lights.indexOf(obj);
+					this.lights.splice(i, 1);
+				}
+
+				//this.gameObjects[obj.id]
+				let i = this.gameObjects.indexOf(obj);
+				this.gameObjects.splice(i, 1);
+			}
+
+			keyDown(event) {
+			//	console.log("The number of the key pressed:  " + event.keyCode +
+			//		",the string of the event code: " + String.fromCharCode(event.keyCode));
+			//	console.log(event.keyCode);
+				this.keys[event.keyCode] = true;
+			}
+
+			keyUp(event) {
+			//	console.log("The number of the key released:  " + event.keyCode +
+			//		",the string of the event code: " + String.fromCharCode(event.keyCode));
+
+				this.keys[event.keyCode] = false;
+			}
+
+			isKeyPressed(key) {
+				var code = key.charCodeAt(0);
+				if (code in this.keys) {
+					return this.keys[code];
+				}
+				return false;
+			}
+
+			getKeyAxis(negKey, posKey)
+			{
+				let v = 0.0;
+
+				if(this.isKeyPressed(negKey))
+					v -= 1.0;
+				if(this.isKeyPressed(posKey))
+					v += 1.0;
+
+				return v;
+			}
+
+			static mainLoop(time)
+			{
+				var deltaTime = (time-m.prevTime)/1000;
+
+
+
+				m.prevTime=time;
+
+			
+				
+				m.updateAll(deltaTime);
+
+			
+
+				cam.moveCamera(m.programs);
+
+
+				//m.renderAll();
+				m.batchRenderAll();
+
+				Debug(deltaTime);
+				requestAnimationFrame(main.mainLoop);
+			}
+
+			endGame()
+			{
+				
+				scoreText.innerHTML = "GAME OVER";
+			}
+
+			addScore()
+			{
+				this.score++;
+				scoreText.innerHTML = "Score: " + this.score;
+			}
+
+		}
+
+		function keyD(event) {
+				m.keyDown(event);
+			}
+
+		function keyU(event) {
+			m.keyUp(event);
+		}
+
+		function mouseH(e)
+		{
+			
+		}
+
+		function extendArray(a, b)
+		{
+			b.forEach(c => {
+				a.push(c);
+			});
+		}
+
+
+		// thank you, https://stackoverflow.com/questions/22697936/binary-search-in-javascript
+		function binarySearch(arr, el, compare_fn) {
+		let m = 0;
+		let n = arr.length - 1;
+		while (m <= n) {
+			let k = (n + m) >> 1;
+			let cmp = compare_fn(el, arr[k]);
+			if (cmp > 0) {
+				m = k + 1;
+			} else if(cmp < 0) {
+				n = k - 1;
+			} else {
+				return k;
+			}
+   		 }
+    	return ~m;
+		}
+
+		function Debug(dTime)
+		{
+			if(showDebug)
+			{
+				debug_el.style="display:content;";
+				debug_el.innerHTML="DEBUG:<br>"+
+				"DT = "+ dTime + "<br>" +
+				"FPS = "+ 1.0/dTime + "";
+			}
+			else
+			{
+				debug_el.style="display:none;";
+			}
+
+			
+
+		}
+
+		</script>
+	</Head>
+	<BODY>
+		<HEADER>
+		
+		</HEADER>
+		<style>
+			.center{
+				margin:auto;
+				width:fit-content;
+			}
+			.container {
+    position: relative;
+  }
+
+			.debug{
+				position: absolute;
+			top: 0;
+			width: 99vw;
+			overflow:hidden;
+			text-align:left;
+			font-size: 16px;
+			font-family: "Monaco", "Lucida Console", monospace;
+			color:white;
+			background-color:rgba(0.15,0.15,0.15,0.33);
+			line-height:120%;
+			text-decoration-line: underline;
+			}
+
+			.pad
+			{
+				padding:16px;
+			}
+
+			.pixel{
+				image-rendering: optimizeSpeed;
+				image-rendering: pixelated;
+			}
+
+			.bordered
+			{
+				background-color: black;
+				border:8px solid;
+				border-color: black;
+			}
+
+			.fullscreen
+			{
+				width:95vw;
+				height:95vh;
+			}
+		</style>
+		<div class="center">
+		<CANVAS id="myCanvas" width="640" height="360" class="pixel fullscreen">
+			Your browser does not support canvas.
+		</CANVAS>
+		</div>
+
+		<div class="debug" id="debug" style="display:none;">
+			DEBUG:
+		</div>
+		<FOOTER>
+		
+		</FOOTER>
+
+		<script src="GameObject.js"></script>
+		<script src="noise.js"></script>
+		<script src="SystemBuilder.js"></script>
+
+
+		<SCRIPT>
+
+			var canvas = document.getElementById("myCanvas");
+			canvas.addEventListener("click", mouseH);
+			window.onkeydown = keyD;
+			window.onkeyup = keyU;
+
+			var gl = canvas.getContext("webgl", {antialias:false});
+
+			var debug_el = document.getElementById("debug");
+			
+			var freezeCam = false;
+			var showPlayerModel = false;
+			var useLameInput = true;
+			var thirdPerson = false;
+			var showDebug=false;
+
+			//canvas.width=window.innerWidth;
+			//canvas.height=window.innerHeight;
+
+			//gl.width = window.innerWidth;
+			//gl.height=window.innerHeight;
+			
+			var m = new main();
+
+			var cam = new Camera();
+			m.addObj(cam);
+		</SCRIPT>		
+	</BODY>
+</HTML>
+		
+		
